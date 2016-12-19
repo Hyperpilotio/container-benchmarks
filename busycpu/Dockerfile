@@ -1,9 +1,5 @@
-FROM golang:1.6
+FROM alpine:3.4
 
-ADD . /busycpu
-
-WORKDIR /busycpu
-
-RUN go build .
+ADD busycpu /usr/local/bin/busycpu
 
 CMD busycpu
