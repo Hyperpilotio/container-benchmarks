@@ -7,6 +7,7 @@ import (
 
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -59,6 +60,22 @@ func (server *Server) deployBenchmark(benchmark *Benchmark) (*DeployedBenchmark,
 	}
 
 	glog.Infof("Deploying benchmark: %+v", benchmark)
+
+	parts := strings.Split(benchmark.Image, ":")
+	tag := "latest"
+	if len(parts) > 1 {
+		tag = parts[1]
+	}
+
+	err := server.dockerClient.PullImage(docker.PullImageOptions{
+		Repository: parts[0],
+		Tag:        tag,
+	}, docker.AuthConfiguration{})
+
+	if err != nil {
+		return nil, err
+	}
+
 	for i := 1; i <= benchmark.Count; i++ {
 		config := &docker.Config{
 			Image: benchmark.Image,
