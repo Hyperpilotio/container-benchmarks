@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/fsouza/go-dockerclient"
-	"github.com/gin-gonic/gin"
-	"github.com/golang/glog"
-
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/fsouza/go-dockerclient"
+	"github.com/gin-gonic/gin"
+	"github.com/golang/glog"
+	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/apis"
 )
 
 type Server struct {
@@ -18,22 +19,9 @@ type Server struct {
 	dockerClient *docker.Client
 }
 
-type Resources struct {
-	CPUShares int64 `json:"cpushares"`
-	Memory    int64 `json:"memory"`
-}
-
 type DeployedBenchmark struct {
-	Benchmark *Benchmark
+	Benchmark *apis.Benchmark
 	NameToId  map[string]string
-}
-
-type Benchmark struct {
-	Name      string    `json:"name" binding:"required"`
-	Count     int       `json:"count" binding:"required"`
-	Resources Resources `json:"resources"`
-	Image     string    `json:"image" binding:"required"`
-	Command   []string  `json:"command"`
 }
 
 func NewServer(client *docker.Client, port string) *Server {
@@ -49,7 +37,7 @@ func (server *Server) removeContainers(prefix string) {
 
 }
 
-func (server *Server) deployBenchmark(benchmark *Benchmark) (*DeployedBenchmark, error) {
+func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBenchmark, error) {
 	hostConfig := &docker.HostConfig{
 		PublishAllPorts: true,
 	}
@@ -120,7 +108,7 @@ func (server *Server) deployBenchmark(benchmark *Benchmark) (*DeployedBenchmark,
 }
 
 func (server *Server) createBenchmark(c *gin.Context) {
-	var benchmark Benchmark
+	var benchmark apis.Benchmark
 	if err := c.BindJSON(&benchmark); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
@@ -202,7 +190,7 @@ func (server *Server) updateResources(c *gin.Context) {
 		return
 	}
 
-	var resources Resources
+	var resources apis.Resources
 	if err := c.BindJSON(&resources); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
