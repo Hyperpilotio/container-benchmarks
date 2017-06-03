@@ -1,4 +1,4 @@
-package apis
+package model
 
 type Resources struct {
 	CPUShares int64 `json:"cpushares"`

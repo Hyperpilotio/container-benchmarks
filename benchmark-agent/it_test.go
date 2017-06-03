@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/apis"
+	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/model"
 	testHttp "github.com/hyperpilotio/container-benchmarks/benchmark-agent/test/http"
 )
 
@@ -26,10 +26,10 @@ var _ = Describe("Test creating benchmarks", func() {
 	})
 
 	It("creates benchmarks", func() {
-		req := &apis.Benchmark{
+		req := &model.Benchmark{
 			Name:  "busycpu",
 			Count: 4,
-			Resources: &apis.Resources{
+			Resources: &model.Resources{
 				CPUShares: 512,
 			},
 			Image: "hyperpilot/busycpu",
@@ -47,10 +47,10 @@ var _ = Describe("Test creating benchmarks", func() {
 
 var _ = Describe("Test updating benchmarks", func() {
 	BeforeEach(func() {
-		req := &apis.Benchmark{
+		req := &model.Benchmark{
 			Name:  "busycpu",
 			Count: 4,
-			Resources: &apis.Resources{
+			Resources: &model.Resources{
 				CPUShares: 512,
 			},
 			Image: "hyperpilot/busycpu",
@@ -70,7 +70,7 @@ var _ = Describe("Test updating benchmarks", func() {
 	})
 
 	It("updates benchmarks", func() {
-		req := &apis.Resources{
+		req := &model.Resources{
 			CPUShares: 256,
 		}
 		resp := testHttp.Response(
@@ -86,10 +86,10 @@ var _ = Describe("Test updating benchmarks", func() {
 
 var _ = Describe("Test deleting benchmarks", func() {
 	BeforeEach(func() {
-		req := &apis.Benchmark{
+		req := &model.Benchmark{
 			Name:  "busycpu",
 			Count: 4,
-			Resources: &apis.Resources{
+			Resources: &model.Resources{
 				CPUShares: 512,
 			},
 			Image: "hyperpilot/busycpu",

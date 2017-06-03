@@ -9,7 +9,7 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/glog"
-	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/apis"
+	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/model"
 )
 
 type Server struct {
@@ -20,7 +20,7 @@ type Server struct {
 }
 
 type DeployedBenchmark struct {
-	Benchmark *apis.Benchmark
+	Benchmark *model.Benchmark
 	NameToId  map[string]string
 }
 
@@ -55,7 +55,7 @@ func (server *Server) removeContainers(prefix string) {
 
 }
 
-func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBenchmark, error) {
+func (server *Server) deployBenchmark(benchmark *model.Benchmark) (*DeployedBenchmark, error) {
 	hostConfig := &docker.HostConfig{
 		PublishAllPorts: true,
 	}
@@ -126,7 +126,7 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 }
 
 func (server *Server) createBenchmark(c *gin.Context) {
-	var benchmark apis.Benchmark
+	var benchmark model.Benchmark
 	if err := c.BindJSON(&benchmark); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
@@ -208,7 +208,7 @@ func (server *Server) updateResources(c *gin.Context) {
 		return
 	}
 
-	var resources apis.Resources
+	var resources model.Resources
 	if err := c.BindJSON(&resources); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
