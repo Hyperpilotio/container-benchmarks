@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/glog"
 	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/apis"
@@ -31,6 +31,24 @@ func NewServer(client *docker.Client, port string) *Server {
 		mutex:        &sync.Mutex{},
 		Benchmarks:   make(map[string]*DeployedBenchmark),
 	}
+}
+
+func (server *Server) Run() error {
+	//gin.SetMode("release")
+	router := gin.New()
+
+	// Global middleware
+	router.Use(gin.Logger())
+	router.Use(gin.Recovery())
+
+	benchmarkGroup := router.Group("/benchmarks")
+	{
+		benchmarkGroup.POST("", server.createBenchmark)
+		benchmarkGroup.DELETE("/:benchmark", server.deleteBenchmark)
+		benchmarkGroup.PUT("/:benchmark/resources", server.updateResources)
+	}
+
+	return router.Run(":" + server.Port)
 }
 
 func (server *Server) removeContainers(prefix string) {
@@ -227,20 +245,10 @@ func (server *Server) updateResources(c *gin.Context) {
 	})
 }
 
-func (server *Server) Run() error {
-	//gin.SetMode("release")
-	router := gin.New()
-
-	// Global middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
-
-	benchmarkGroup := router.Group("/benchmarks")
-	{
-		benchmarkGroup.POST("", server.createBenchmark)
-		benchmarkGroup.DELETE("/:benchmark", server.deleteBenchmark)
-		benchmarkGroup.PUT("/:benchmark/resources", server.updateResources)
+func initGin() {
+	server := NewServer(dockerClient, "7778")
+	err := server.Run()
+	if err != nil {
+		panic(err)
 	}
-
-	return router.Run(":" + server.Port)
 }
