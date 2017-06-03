@@ -6,9 +6,9 @@ type Resources struct {
 }
 
 type Benchmark struct {
-	Name      string    `json:"name" binding:"required"`
-	Count     int       `json:"count" binding:"required"`
-	Resources Resources `json:"resources"`
-	Image     string    `json:"image" binding:"required"`
-	Command   []string  `json:"command"`
+	Name      string     `json:"name" binding:"required"`
+	Count     int        `json:"count" binding:"required"`
+	Resources *Resources `json:"resources"`
+	Image     string     `json:"image" binding:"required"`
+	Command   []string   `json:"command"`
 }
