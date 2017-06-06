@@ -11,4 +11,5 @@ type Benchmark struct {
 	Resources *Resources `json:"resources"`
 	Image     string     `json:"image" binding:"required"`
 	Command   []string   `json:"command"`
+	Intensity int        `json:"intensity"`
 }

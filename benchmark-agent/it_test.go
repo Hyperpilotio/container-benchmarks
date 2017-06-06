@@ -32,7 +32,8 @@ var _ = Describe("Test creating benchmarks", func() {
 			Resources: &model.Resources{
 				CPUShares: 512,
 			},
-			Image: "hyperpilot/busycpu",
+			Image:     "hyperpilot/busycpu",
+			Intensity: 100,
 		}
 		resp := testHttp.Response(
 			httpClientConfig.NewSling().
@@ -53,7 +54,8 @@ var _ = Describe("Test updating benchmarks", func() {
 			Resources: &model.Resources{
 				CPUShares: 512,
 			},
-			Image: "hyperpilot/busycpu",
+			Image:     "hyperpilot/busycpu",
+			Intensity: 100,
 		}
 		testHttp.Response(
 			httpClientConfig.NewSling().
@@ -92,7 +94,8 @@ var _ = Describe("Test deleting benchmarks", func() {
 			Resources: &model.Resources{
 				CPUShares: 512,
 			},
-			Image: "hyperpilot/busycpu",
+			Image:     "hyperpilot/busycpu",
+			Intensity: 100,
 		}
 		testHttp.Response(
 			httpClientConfig.NewSling().
