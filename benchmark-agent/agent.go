@@ -13,10 +13,10 @@ import (
 )
 
 type Server struct {
-	Port         string
-	Benchmarks   map[string]*DeployedBenchmark
-	mutex        *sync.Mutex
 	dockerClient *docker.Client
+	Port         string
+	mutex        *sync.Mutex
+	Benchmarks   map[string]*DeployedBenchmark
 }
 
 type DeployedBenchmark struct {
@@ -34,7 +34,7 @@ func NewServer(client *docker.Client, port string) *Server {
 }
 
 func (server *Server) removeContainers(prefix string) {
-
+	// TODO: add code to remove existing containers with names matching the prefix
 }
 
 func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBenchmark, error) {
@@ -47,16 +47,18 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		NameToId:  make(map[string]string),
 	}
 
-	glog.Infof("Deploying benchmark: %+v", benchmark)
+	glog.Infof("Deploying new benchmark: %v", benchmark)
 
 	parts := strings.Split(benchmark.Image, ":")
+	image := parts[0]
 	tag := "latest"
 	if len(parts) > 1 {
 		tag = parts[1]
 	}
+	glog.Infof("Pulling image %s with tag %s", image, tag)
 
 	err := server.dockerClient.PullImage(docker.PullImageOptions{
-		Repository: parts[0],
+		Repository: image,
 		Tag:        tag,
 	}, docker.AuthConfiguration{})
 
@@ -64,21 +66,24 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		return nil, err
 	}
 
-	for i := 1; i <= benchmark.Count; i++ {
+	hostConfig.CPUPeriod = 100000 // default CpuPeriod value
+
+	containerCount := 1
+	if benchmark.Count > 0 {
+		containerCount = benchmark.Count
+	}
+
+	for i := 1; i <= containerCount; i++ {
 		config := &docker.Config{
 			Image: benchmark.Image,
 		}
 
-		if benchmark.Command != nil {
-			config.Cmd = benchmark.Command
-		}
+		config.Cmd = benchmark.Command
 
-		if benchmark.Resources.CPUShares > 0 {
-			config.CPUShares = benchmark.Resources.CPUShares
-		}
-
-		if benchmark.Resources.Memory > 0 {
-			config.Memory = benchmark.Resources.Memory
+		if benchmark.QuotaConfig { // use cpu quota of a container to control benchmark intensity
+			hostConfig.CPUQuota = hostConfig.CPUPeriod * int64(benchmark.ResourceIntensity) / 100
+		} else { // pass intensity value directly into benchmark command
+			config.Cmd = append(config.Cmd, strconv.Itoa(benchmark.ResourceIntensity))
 		}
 
 		containerName := benchmark.Name + strconv.Itoa(i)
@@ -89,6 +94,7 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		})
 
 		if err != nil {
+			glog.Errorf("Unable to create container for benchmark %s", benchmark.Name)
 			// Clean up
 			server.removeContainers(benchmark.Name)
 			return nil, err
@@ -98,11 +104,14 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 
 		err = server.dockerClient.StartContainer(container.ID, hostConfig)
 		if err != nil {
+			glog.Errorf("Unable to start container for benchmark %s", benchmark.Name)
 			// Clean up
 			server.removeContainers(benchmark.Name)
 			return nil, err
 		}
 	}
+
+	glog.Infof("Successfully deployed containers for benchmark %s", benchmark.Name)
 
 	return deployed, nil
 }
@@ -122,7 +131,7 @@ func (server *Server) createBenchmark(c *gin.Context) {
 	if _, ok := server.Benchmarks[benchmark.Name]; ok {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
-			"data":  "Benchmark already created. Please delete benchmark before creating",
+			"data":  "Benchmark " + benchmark.Name + " already created. Please delete it before re-creating",
 		})
 		return
 	}
@@ -131,7 +140,7 @@ func (server *Server) createBenchmark(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
-			"data":  "Failed to deploy benchmark: " + err.Error(),
+			"data":  "Failed to deploy benchmark " + benchmark.Name + ": " + string(err.Error()),
 		})
 		return
 	}
@@ -181,46 +190,39 @@ func (server *Server) updateResources(c *gin.Context) {
 	benchmarkName := c.Param("benchmark")
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
+	glog.Infof("Updating resource configuration for benchmark %v", benchmarkName)
 
-	deployed, ok := server.Benchmarks[benchmarkName]
-	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": false,
-		})
-		return
-	}
-
-	var resources apis.Resources
-	if err := c.BindJSON(&resources); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": true,
-			"data":  "Unable to deserialize resources: " + err.Error(),
-		})
-		return
-	}
-
-	updateOptions := docker.UpdateContainerOptions{}
-	if resources.CPUShares > 0 {
-		updateOptions.CPUShares = int(resources.CPUShares)
-	}
-
-	if resources.Memory > 0 {
-		updateOptions.Memory = int(resources.Memory)
-	}
-
-	glog.Infof("Updating resources for benchmark", deployed.Benchmark.Name)
-	for i := 1; i <= deployed.Benchmark.Count; i++ {
-		containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
-		glog.Infof("Updating container ID %s, %+v", containerId, updateOptions)
-		err := server.dockerClient.UpdateContainer(containerId, updateOptions)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": true,
-				"data":  "Unable to update resources: " + err.Error(),
+	/*
+		deployed, ok := server.Benchmarks[benchmarkName]
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": false,
 			})
 			return
 		}
-	}
+			updateOptions := docker.UpdateContainerOptions{}
+			if resources.CPUShares > 0 {
+				updateOptions.CPUShares = int(resources.CPUShares)
+			}
+
+			if resources.Memory > 0 {
+				updateOptions.Memory = int(resources.Memory)
+			}
+
+			glog.Infof("Updating resources for benchmark", deployed.Benchmark.Name)
+			for i := 1; i <= deployed.Benchmark.Count; i++ {
+				containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
+				glog.Infof("Updating container ID %s, %+v", containerId, updateOptions)
+				err := server.dockerClient.UpdateContainer(containerId, updateOptions)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error": true,
+						"data":  "Unable to update resources: " + err.Error(),
+					})
+					return
+				}
+			}
+	*/
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"error": false,
@@ -252,11 +254,13 @@ func main() {
 		panic(err)
 	}
 
-	err = client.Ping()
-	if err != nil {
-		glog.Error("Unable to ping docker daemon")
-		panic(err)
-	}
+	/*
+		err = client.Ping()
+		if err != nil {
+			glog.Error("Unable to ping docker daemon")
+			panic(err)
+		}
+	*/
 
 	server := NewServer(client, "7778")
 	err = server.Run()
