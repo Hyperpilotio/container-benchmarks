@@ -1,0 +1,28 @@
+{
+    "benchmarks": [
+	{
+	    "name": "cpu",
+	    "resourceType": "CPUCapacity",
+	    "image": "hyperpilot/hyperbench",
+	    "intensity": 10,
+	    "cgroupConfig": {
+		"setCpuQuota": true
+	    },
+	    "command": {
+		"path": "./cpu",
+	        "args": ["3600"]
+	    },
+	    "count": 1
+	},
+	{
+	    "name": "memCap",
+	    "resourceType": "MemoryCapacity",
+	    "image": "hyperpilot/hyperbench",
+	    "intensity": 10,
+	    "command": {
+		"path": "./memCap",
+	        "args": ["3600"]
+	    },
+	    "count": 1
+	}
+}

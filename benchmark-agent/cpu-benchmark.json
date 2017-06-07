@@ -1,9 +1,14 @@
 {
-  "name": "cpu",
-  "resourceType": "CPU Capacity",
-  "image": "hyperpilot/hyperbench",
-  "resourceIntensity": 20,
-  "quotaConfig": true,
-  "command": ["./cpu", "3600"],
-  "count": 1
+    "name": "cpu",
+    "resourceType": "CPUCapacity",
+    "image": "hyperpilot/hyperbench",
+    "intensity": 10,
+    "cgroupConfig": {
+	"setCpuQuota": true
+    },
+    "command": {
+	"path": "./cpu",
+	"args": ["3600"]
+    },
+    "count": 1
 }
