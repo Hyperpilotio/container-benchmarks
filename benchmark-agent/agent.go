@@ -55,7 +55,7 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 	if len(parts) > 1 {
 		tag = parts[1]
 	}
-	glog.Infof("Pulling image %s with tag %s", image, tag)
+	glog.Infof("Pulling image %s:%s for benchmark %s", image, tag, benchmark.Name)
 
 	err := server.dockerClient.PullImage(docker.PullImageOptions{
 		Repository: image,
@@ -63,6 +63,7 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 	}, docker.AuthConfiguration{})
 
 	if err != nil {
+		glog.Errorf("Unable to pull image %s:%s for benchmark %s", image, tag, benchmark.Name)
 		return nil, err
 	}
 
