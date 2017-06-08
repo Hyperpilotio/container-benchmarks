@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	logger "github.com/Sirupsen/logrus"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/model"
@@ -50,7 +51,7 @@ func initHTTPServ() {
 func setAPIRoutes(router *gin.Engine) {
 	router.POST("benchmarks", createBenchmark)
 	router.DELETE("benchmarks/:benchmark", deleteBenchmark)
-	router.PUT("benchmarks/:benchmark/resources", updateResources)
+	router.PUT("benchmarks/:benchmark/intensity", updateIntensity)
 }
 
 func createBenchmark(c *gin.Context) {
@@ -66,7 +67,7 @@ func createBenchmark(c *gin.Context) {
 	if dockerClient.IsCreated(benchmark.Name) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
-			"data":  "Benchmark already created. Please delete benchmark before creating",
+			"data":  "Benchmark " + benchmark.Name + " already created. Please delete it before re-creating",
 		})
 		return
 	}
@@ -74,7 +75,7 @@ func createBenchmark(c *gin.Context) {
 	if err := dockerClient.DeployBenchmark(&benchmark); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
-			"data":  "Failed to deploy benchmark: " + err.Error(),
+			"data":  "Failed to deploy benchmark " + benchmark.Name + ": " + string(err.Error()),
 		})
 		return
 	}
@@ -107,17 +108,20 @@ func deleteBenchmark(c *gin.Context) {
 	})
 }
 
-func updateResources(c *gin.Context) {
+func updateIntensity(c *gin.Context) {
 	name := c.Param("benchmark")
-	resources := &model.Resources{}
-	if err := c.BindJSON(resources); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": true,
-			"data":  "Unable to deserialize resources: " + err.Error(),
-		})
-		return
-	}
+	/*
+		resources := &model.Resources{}
+		if err := c.BindJSON(resources); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": true,
+				"data":  "Unable to deserialize resources: " + err.Error(),
+			})
+			return
+		}
+	*/
 
+	logger.Infof("Updating resource intensity for benchmark %v", name)
 	depBenchmark := dockerClient.DeployedBenchmark(name)
 	if depBenchmark == nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -125,15 +129,15 @@ func updateResources(c *gin.Context) {
 		})
 		return
 	}
-
-	if err := dockerClient.UpdateResources(depBenchmark, resources); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": true,
-			"data":  "Unable to update resources: " + err.Error(),
-		})
-		return
-	}
-
+	/*
+		if err := dockerClient.UpdateResources(depBenchmark, resources); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": true,
+				"data":  "Unable to update resources: " + err.Error(),
+			})
+			return
+		}
+	*/
 	c.JSON(http.StatusAccepted, gin.H{
 		"error": false,
 	})

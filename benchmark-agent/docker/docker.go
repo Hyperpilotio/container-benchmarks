@@ -65,40 +65,50 @@ func (client *Client) DeployBenchmark(benchmark *model.Benchmark) error {
 		nameToID:  make(map[string]string),
 	}
 
-	logger.Infof("Deploying benchmark: %+v", benchmark)
+	logger.Infof("Deploying new benchmark: %v", benchmark)
 
 	parts := strings.Split(benchmark.Image, ":")
+	image := parts[0]
 	tag := "latest"
 	if len(parts) > 1 {
 		tag = parts[1]
 	}
 
+	// TODO: we may not need to re-pull the image for every new benchmark posted
+	logger.Infof("Pulling image %s:%s for benchmark %s", image, tag, benchmark.Name)
 	if err := client.c.PullImage(docker.PullImageOptions{
-		Repository: parts[0],
+		Repository: image,
 		Tag:        tag,
 	},
 		docker.AuthConfiguration{},
 	); err != nil {
+		logger.Errorf("Unable to pull image %s:%s for benchmark %s", image, tag, benchmark.Name)
 		return err
 	}
 
-	for i := 1; i <= benchmark.Count; i++ {
-		config := &docker.Config{
-			Image: benchmark.Image,
-		}
+	config := &docker.Config{
+		Image: benchmark.Image,
+	}
 
-		if benchmark.Command != nil {
-			config.Cmd = benchmark.Command
-		}
+	config.Cmd = append(config.Cmd, benchmark.Command.Path)
+	for _, arg := range benchmark.Command.Args {
+		config.Cmd = append(config.Cmd, arg)
+	}
 
-		if benchmark.Resources.CPUShares > 0 {
-			config.CPUShares = benchmark.Resources.CPUShares
-		}
+	hostConfig.CPUPeriod = 100000 // default CpuPeriod value
+	cgroup := &benchmark.CgroupConfig
+	if cgroup != nil && cgroup.SetCpuQuota { // use cgroup cpu quota to control benchmark intensity
+		hostConfig.CPUQuota = hostConfig.CPUPeriod * benchmark.Intensity / 100
+	} else { // pass intensity value directly into benchmark command
+		config.Cmd = append(config.Cmd, strconv.Itoa(int(benchmark.Intensity)))
+	}
 
-		if benchmark.Resources.Memory > 0 {
-			config.Memory = benchmark.Resources.Memory
-		}
+	containerCount := 1
+	if benchmark.Count > 0 {
+		containerCount = benchmark.Count
+	}
 
+	for i := 1; i <= containerCount; i++ {
 		containerName := benchmark.Name + strconv.Itoa(i)
 		container, err := client.c.CreateContainer(docker.CreateContainerOptions{
 			Name:       containerName,
@@ -106,6 +116,7 @@ func (client *Client) DeployBenchmark(benchmark *model.Benchmark) error {
 			HostConfig: hostConfig,
 		})
 		if err != nil {
+			logger.Errorf("Unable to create container for benchmark %s", benchmark.Name)
 			// Clean up
 			client.removeContainers(benchmark.Name)
 			return err
@@ -115,12 +126,14 @@ func (client *Client) DeployBenchmark(benchmark *model.Benchmark) error {
 
 		err = client.c.StartContainer(container.ID, hostConfig)
 		if err != nil {
+			logger.Errorf("Unable to start container for benchmark %s", benchmark.Name)
 			// Clean up
 			client.removeContainers(benchmark.Name)
 			return err
 		}
 	}
 
+	logger.Infof("Successfully deployed containers for benchmark %s", benchmark.Name)
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
 	client.benchmarks[benchmark.Name] = deployed
@@ -128,7 +141,7 @@ func (client *Client) DeployBenchmark(benchmark *model.Benchmark) error {
 }
 
 func (client *Client) removeContainers(prefix string) {
-
+	// TODO: add code to remove existing containers with names matching the prefix
 }
 
 func (client *Client) RemoveDeployedBenchmark(b *DeployedBenchmark) error {
@@ -147,6 +160,7 @@ func (client *Client) RemoveDeployedBenchmark(b *DeployedBenchmark) error {
 	return nil
 }
 
+/*
 func (client *Client) UpdateResources(b *DeployedBenchmark, r *model.Resources) error {
 	updateOptions := docker.UpdateContainerOptions{}
 	if r.CPUShares > 0 {
@@ -166,3 +180,4 @@ func (client *Client) UpdateResources(b *DeployedBenchmark, r *model.Resources) 
 	}
 	return nil
 }
+*/

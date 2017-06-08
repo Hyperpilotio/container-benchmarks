@@ -1,0 +1,66 @@
+{
+	"apiVersion": "extensions\/v1beta1",
+	"kind": "DaemonSet",
+	"metadata": {
+	    "name": "benchmark-agent-daemonset",
+	    "namespace": "profiler"
+	},
+	"spec": {
+	    "template": {
+		"metadata": {
+		    "labels": {
+			"name": "benchmark-agent-daemonset"
+		    }
+		},
+		"spec": {
+		    "containers": [
+			{
+			    "image": "hyperpilot\/benchmark-agent",
+			    "name": "benchmark-agent",
+			    "imagePullPolicy": "Always",
+			    "securityContext": {
+				"privileged": true
+			    },
+			    "volumeMounts": [
+				{
+				    "mountPath": "\/var\/run\/docker.sock",
+				    "name": "docker-sock"
+				},
+				{
+				    "mountPath": "\/sys\/fs\/cgroup",
+				    "name": "cgroup"
+				}
+			    ],
+			    "ports": [
+				{
+				    "containerPort": 7778,
+				    "hostPort": 7778,
+				    "protocol": "TCP"
+				}
+			    ]
+			}
+		    ],
+		    "volumes": [
+			{
+			    "hostPath": {
+				"path": "\/var\/run\/docker.sock"
+			    },
+			    "name": "docker-socket"
+			},
+			{
+			    "hostPath": {
+				"path": "\/sys\/fs\/cgroup"
+			    },
+			    "name": "cgroup"
+			}
+		    ],
+		    "imagePullSecrets": [
+			{
+			    "name": "myregistrykey"
+			}
+		    ],
+		    "terminationGracePeriodSeconds": 10
+		}
+	    }
+	}
+}

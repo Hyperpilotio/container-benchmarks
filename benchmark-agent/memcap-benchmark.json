@@ -1,0 +1,11 @@
+{
+    "name": "memCap",
+    "resourceType": "MemoryCapacity",
+    "image": "hyperpilot/hyperbench",
+    "intensity": 20,
+    "command": {
+	"path": "./memCap",
+	"args": ["3600"]
+    },
+    "count": 1
+}

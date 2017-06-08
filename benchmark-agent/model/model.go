@@ -1,15 +1,20 @@
 package model
 
-type Resources struct {
-	CPUShares int64 `json:"cpushares"`
-	Memory    int64 `json:"memory"`
+type CgroupConfig struct {
+	SetCpuQuota bool `json:"setCpuQuota"`
+}
+
+type Command struct {
+	Path string   `json:"path" binding:"required"`
+	Args []string `json:"args"`
 }
 
 type Benchmark struct {
-	Name      string     `json:"name" binding:"required"`
-	Count     int        `json:"count" binding:"required"`
-	Resources *Resources `json:"resources"`
-	Image     string     `json:"image" binding:"required"`
-	Command   []string   `json:"command"`
-	Intensity int        `json:"intensity"`
+	Name         string       `json:"name" binding:"required"`
+	ResourceType string       `json:"resourceType" binding:"required"`
+	Image        string       `json:"image" binding:"required"`
+	Command      Command      `json:"command" binding:"required"`
+	Intensity    int64        `json::"intensity" binding:"required"`
+	CgroupConfig CgroupConfig `json:"cgroupConfig"`
+	Count        int          `json:"count"`
 }
