@@ -1,4 +1,4 @@
-package apis
+package model
 
 type CgroupConfig struct {
 	SetCpuQuota bool `json:"setCpuQuota"`
