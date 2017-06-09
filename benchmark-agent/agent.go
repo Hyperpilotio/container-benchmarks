@@ -77,11 +77,16 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		config.Cmd = append(config.Cmd, arg)
 	}
 
-	hostConfig.CPUPeriod = 100000 // default CpuPeriod value
+	// default CpuPeriod value
+	hostConfig.CPUPeriod = 100000
 	cgroup := &benchmark.CgroupConfig
-	if cgroup != nil && cgroup.SetCpuQuota { // use cgroup cpu quota to control benchmark intensity
-		hostConfig.CPUQuota = hostConfig.CPUPeriod * benchmark.Intensity / 100
-	} else { // pass intensity value directly into benchmark command
+	if cgroup != nil && cgroup.SetCpuQuota {
+		// use cgroup cpu quota to control benchmark intensity
+		quota := hostConfig.CPUPeriod * benchmark.Intensity / 100
+		glog.Infof("Setting cpu quota for benchmark to be %d", quota)
+		hostConfig.CPUQuota = quota
+	} else {
+		// pass intensity value directly into benchmark command
 		config.Cmd = append(config.Cmd, strconv.Itoa(int(benchmark.Intensity)))
 	}
 
