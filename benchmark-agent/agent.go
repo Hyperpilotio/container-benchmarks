@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"net/http"
 	"strconv"
 	"strings"
@@ -252,6 +253,9 @@ func (server *Server) Run() error {
 }
 
 func main() {
+	// Calling this to avoid error message "Logging before calling flags.parse"
+	flag.CommandLine.Parse([]string{})
+
 	endpoint := "unix:///var/run/docker.sock"
 	client, err := docker.NewClient(endpoint)
 	if err != nil {
