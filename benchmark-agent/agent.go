@@ -23,6 +23,7 @@ type Server struct {
 type DeployedBenchmark struct {
 	Benchmark *apis.Benchmark
 	NameToId  map[string]string
+	State     string
 }
 
 func NewServer(client *docker.Client, port string) *Server {
@@ -34,8 +35,26 @@ func NewServer(client *docker.Client, port string) *Server {
 	}
 }
 
-func (server *Server) removeContainers(prefix string) {
-	// TODO: add code to remove existing containers with names matching the prefix
+func (server *Server) removeContainers(benchmarkName string) {
+	deployed, ok := server.Benchmarks[benchmarkName]
+	if !ok { // no existing containers belong to the given benchmark
+		return
+	}
+
+	glog.Warningf("Removing deployed containers with prefix %s in name", benchmarkName)
+	for containerName, containerId := range deployed.NameToId {
+		if strings.HasPrefix(containerName, benchmarkName) {
+			err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
+				ID:            containerId,
+				Force:         true,
+				RemoveVolumes: true,
+			})
+			if err != nil {
+				glog.Warningf("Unable to remove container %s", containerName)
+				continue
+			}
+		}
+	}
 }
 
 func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBenchmark, error) {
@@ -46,9 +65,8 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 	deployed := &DeployedBenchmark{
 		Benchmark: benchmark,
 		NameToId:  make(map[string]string),
+		State:     "PULLING",
 	}
-
-	glog.Infof("Deploying new benchmark: %v", benchmark)
 
 	parts := strings.Split(benchmark.Image, ":")
 	image := parts[0]
@@ -56,13 +74,19 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 	if len(parts) > 1 {
 		tag = parts[1]
 	}
-	// TODO: we may not need to re-pull the image for every new benchmark posted
+
 	glog.Infof("Pulling image %s:%s for benchmark %s", image, tag, benchmark.Name)
-	err := server.dockerClient.PullImage(docker.PullImageOptions{
+	authConfigs, err := docker.NewAuthConfigurationsFromDockerCfg()
+	if err != nil {
+		glog.Errorf("Unable to get docker authorization configurations")
+		return nil, err
+	}
+
+	authConfig := authConfigs.Configs["auths"]
+	err = server.dockerClient.PullImage(docker.PullImageOptions{
 		Repository: image,
 		Tag:        tag,
-	}, docker.AuthConfiguration{})
-
+	}, authConfig)
 	if err != nil {
 		glog.Errorf("Unable to pull image %s:%s for benchmark %s", image, tag, benchmark.Name)
 		return nil, err
@@ -95,6 +119,7 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		containerCount = benchmark.Count
 	}
 
+	deployed.State = "DEPLOYING"
 	for i := 1; i <= containerCount; i++ {
 		containerName := benchmark.Name + strconv.Itoa(i)
 		container, err := server.dockerClient.CreateContainer(docker.CreateContainerOptions{
@@ -104,7 +129,7 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		})
 
 		if err != nil {
-			glog.Errorf("Unable to create container for benchmark %s", benchmark.Name)
+			glog.Errorf("Unable to create container %d for benchmark %s", i, benchmark.Name)
 			// Clean up
 			server.removeContainers(benchmark.Name)
 			return nil, err
@@ -114,13 +139,14 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 
 		err = server.dockerClient.StartContainer(container.ID, hostConfig)
 		if err != nil {
-			glog.Errorf("Unable to start container for benchmark %s", benchmark.Name)
+			glog.Errorf("Unable to start container %d for benchmark %s", i, benchmark.Name)
 			// Clean up
 			server.removeContainers(benchmark.Name)
 			return nil, err
 		}
 	}
 
+	deployed.State = "DEPLOYED"
 	glog.Infof("Successfully deployed containers for benchmark %s", benchmark.Name)
 
 	return deployed, nil
@@ -146,19 +172,44 @@ func (server *Server) createBenchmark(c *gin.Context) {
 		return
 	}
 
-	deployed, err := server.deployBenchmark(&benchmark)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+	go func() {
+		glog.Infof("Creating new benchmark: %+v", benchmark)
+
+		deployed, err := server.deployBenchmark(&benchmark)
+		if err != nil {
+			glog.Errorf("Failed to deploy benchmark: " + err.Error())
+			deployed.State = "FAILED"
+		}
+
+		server.Benchmarks[benchmark.Name] = deployed
+	}()
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"error":  false,
+		"status": "CREATING",
+	})
+
+}
+
+func (server *Server) queryBenchmark(c *gin.Context) {
+	benchmarkName := c.Param("benchmark")
+	server.mutex.Lock()
+	defer server.mutex.Unlock()
+
+	deployed, ok := server.Benchmarks[benchmarkName]
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{
 			"error": true,
-			"data":  "Failed to deploy benchmark " + benchmark.Name + ": " + string(err.Error()),
+			"data":  "Benchmark " + benchmarkName + " do not exist yet",
+		})
+		return
+	} else {
+		c.JSON(http.StatusAccepted, gin.H{
+			"error":  false,
+			"status": deployed.State,
 		})
 		return
 	}
-
-	server.Benchmarks[benchmark.Name] = deployed
-	c.JSON(http.StatusAccepted, gin.H{
-		"error": false,
-	})
 }
 
 func (server *Server) deleteBenchmark(c *gin.Context) {
@@ -196,43 +247,57 @@ func (server *Server) deleteBenchmark(c *gin.Context) {
 	})
 }
 
+// currently only support updating cpuquota
 func (server *Server) updateIntensity(c *gin.Context) {
 	benchmarkName := c.Param("benchmark")
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	glog.Infof("Updating resource intensity for benchmark %v", benchmarkName)
 
-	/*
-		deployed, ok := server.Benchmarks[benchmarkName]
-		if !ok {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": false,
+	deployed, ok := server.Benchmarks[benchmarkName]
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": true,
+			"data":  "Benchmark does not exist",
+		})
+		return
+	}
+
+	if deployed.State != "DEPLOYED" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": true,
+			"data":  "Benchmark has not been deployed",
+		})
+		return
+	}
+
+	var update apis.UpdateRequest
+	if err := c.BindJSON(&update); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": true,
+			"data":  "Unable to deserialize update request: " + err.Error(),
+		})
+		return
+	}
+
+	updateOptions := docker.UpdateContainerOptions{}
+	if update.Intensity > 0 {
+		updateOptions.CPUPeriod = 100000
+		updateOptions.CPUQuota = updateOptions.CPUPeriod * int(update.Intensity) / 100
+	}
+
+	glog.Infof("Updating resource intensity for benchmark %s to %d", benchmarkName, update.Intensity)
+	for i := 1; i <= deployed.Benchmark.Count; i++ {
+		containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
+		glog.Infof("Updating container ID %s, %+v", containerId, updateOptions)
+		err := server.dockerClient.UpdateContainer(containerId, updateOptions)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": true,
+				"data":  "Unable to update resource intensity: " + err.Error(),
 			})
 			return
 		}
-			updateOptions := docker.UpdateContainerOptions{}
-			if resources.CPUShares > 0 {
-				updateOptions.CPUShares = int(resources.CPUShares)
-			}
-
-			if resources.Memory > 0 {
-				updateOptions.Memory = int(resources.Memory)
-			}
-
-			glog.Infof("Updating resources for benchmark", deployed.Benchmark.Name)
-			for i := 1; i <= deployed.Benchmark.Count; i++ {
-				containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
-				glog.Infof("Updating container ID %s, %+v", containerId, updateOptions)
-				err := server.dockerClient.UpdateContainer(containerId, updateOptions)
-				if err != nil {
-					c.JSON(http.StatusBadRequest, gin.H{
-						"error": true,
-						"data":  "Unable to update resources: " + err.Error(),
-					})
-					return
-				}
-			}
-	*/
+	}
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"error": false,
@@ -250,6 +315,7 @@ func (server *Server) Run() error {
 	benchmarkGroup := router.Group("/benchmarks")
 	{
 		benchmarkGroup.POST("", server.createBenchmark)
+		benchmarkGroup.GET("/:benchmark", server.queryBenchmark)
 		benchmarkGroup.DELETE("/:benchmark", server.deleteBenchmark)
 		benchmarkGroup.PUT("/:benchmark/intensity", server.updateIntensity)
 	}

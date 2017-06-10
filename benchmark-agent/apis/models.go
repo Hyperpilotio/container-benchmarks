@@ -18,3 +18,7 @@ type Benchmark struct {
 	CgroupConfig CgroupConfig `json:"cgroupConfig"`
 	Count        int          `json:"count"`
 }
+
+type UpdateRequest struct {
+	Intensity int64 `json::"intensity" binding:"required"`
+}
