@@ -24,6 +24,7 @@ type DeployedBenchmark struct {
 	Benchmark *apis.Benchmark
 	NameToId  map[string]string
 	State     string
+	Error     string
 }
 
 func NewServer(client *docker.Client, port string) *Server {
@@ -57,17 +58,12 @@ func (server *Server) removeContainers(benchmarkName string) {
 	}
 }
 
-func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBenchmark, error) {
+func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 	hostConfig := &docker.HostConfig{
 		PublishAllPorts: true,
 	}
 
-	deployed := &DeployedBenchmark{
-		Benchmark: benchmark,
-		NameToId:  make(map[string]string),
-		State:     "PULLING",
-	}
-
+	benchmark := deployed.Benchmark
 	parts := strings.Split(benchmark.Image, ":")
 	image := parts[0]
 	tag := "latest"
@@ -78,8 +74,8 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 	glog.Infof("Pulling image %s:%s for benchmark %s", image, tag, benchmark.Name)
 	authConfigs, err := docker.NewAuthConfigurationsFromDockerCfg()
 	if err != nil {
-		glog.Errorf("Unable to get docker authorization configurations")
-		return nil, err
+		glog.Errorf("Unable to get docker authorization configurations: " + err.Error())
+		return err
 	}
 
 	authConfig := authConfigs.Configs["auths"]
@@ -88,8 +84,8 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		Tag:        tag,
 	}, authConfig)
 	if err != nil {
-		glog.Errorf("Unable to pull image %s:%s for benchmark %s", image, tag, benchmark.Name)
-		return nil, err
+		glog.Errorf("Unable to pull image %s:%s for benchmark %s: %s", image, tag, benchmark.Name, err.Error())
+		return err
 	}
 
 	config := &docker.Config{
@@ -129,27 +125,27 @@ func (server *Server) deployBenchmark(benchmark *apis.Benchmark) (*DeployedBench
 		})
 
 		if err != nil {
-			glog.Errorf("Unable to create container %d for benchmark %s", i, benchmark.Name)
+			glog.Errorf("Unable to create container %d for benchmark %s: %s", i, benchmark.Name, err.Error())
 			// Clean up
 			server.removeContainers(benchmark.Name)
-			return nil, err
+			return err
 		}
 
 		deployed.NameToId[containerName] = container.ID
 
 		err = server.dockerClient.StartContainer(container.ID, hostConfig)
 		if err != nil {
-			glog.Errorf("Unable to start container %d for benchmark %s", i, benchmark.Name)
+			glog.Errorf("Unable to start container %d for benchmark %s: %s", i, benchmark.Name, err.Error())
 			// Clean up
 			server.removeContainers(benchmark.Name)
-			return nil, err
+			return err
 		}
 	}
 
 	deployed.State = "DEPLOYED"
 	glog.Infof("Successfully deployed containers for benchmark %s", benchmark.Name)
 
-	return deployed, nil
+	return nil
 }
 
 func (server *Server) createBenchmark(c *gin.Context) {
@@ -172,21 +168,26 @@ func (server *Server) createBenchmark(c *gin.Context) {
 		return
 	}
 
-	go func() {
-		glog.Infof("Creating new benchmark: %+v", benchmark)
+	deployed := &DeployedBenchmark{
+		Benchmark: &benchmark,
+		NameToId:  make(map[string]string),
+		State:     "CREATING",
+	}
 
-		deployed, err := server.deployBenchmark(&benchmark)
+	glog.Infof("Creating new benchmark: %+v", benchmark)
+	server.Benchmarks[benchmark.Name] = deployed
+
+	go func() {
+		err := server.deployBenchmark(deployed)
 		if err != nil {
 			glog.Errorf("Failed to deploy benchmark: " + err.Error())
 			deployed.State = "FAILED"
+			deployed.Error = err.Error()
 		}
-
-		server.Benchmarks[benchmark.Name] = deployed
 	}()
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"error":  false,
-		"status": "CREATING",
+		"error": false,
 	})
 
 }
