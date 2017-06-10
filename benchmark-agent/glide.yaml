@@ -1,4 +1,4 @@
-package: github.com/hyperpilotio/benchmark-agent
+package: github.com/hyperpilotio/container-benchmarks/benchmark-agent
 import:
 - package: github.com/fsouza/go-dockerclient
 - package: github.com/gin-gonic/gin
