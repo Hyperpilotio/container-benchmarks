@@ -109,6 +109,8 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		// pass intensity value directly into benchmark command
 		config.Cmd = append(config.Cmd, strconv.Itoa(int(benchmark.Intensity)))
 	}
+	config.Labels = make(map[string]string)
+	config.Labels["hyperpilot.io/benchmark-agent"] = "true"
 
 	containerCount := 1
 	if benchmark.Count > 0 {
@@ -227,8 +229,10 @@ func (server *Server) deleteBenchmark(c *gin.Context) {
 	}
 
 	for i := 1; i <= deployed.Benchmark.Count; i++ {
+		containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
+		glog.Infof("Removing container %s...", containerId)
 		err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
-			ID:            deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)],
+			ID:            containerId,
 			Force:         true,
 			RemoveVolumes: true,
 		})
@@ -338,6 +342,27 @@ func main() {
 	if err != nil {
 		glog.Error("Unable to ping docker daemon")
 		panic(err)
+	}
+
+	filters := make(map[string][]string)
+	filters["label"] = []string{"hyperpilot.io/benchmark-agent"}
+	existingContainers, err := client.ListContainers(docker.ListContainersOptions{Filters: filters})
+	if err != nil {
+		glog.Error("Unable to find existing launched benchmarks")
+		panic(err)
+	}
+
+	for _, container := range existingContainers {
+		err := client.RemoveContainer(docker.RemoveContainerOptions{
+			ID:            container.ID,
+			Force:         true,
+			RemoveVolumes: true,
+		})
+		if err != nil {
+			glog.Errorf("Unable to remove existing container: %v", container)
+			panic(err)
+		}
+		glog.Infof("Removed existing launched benchmark container: %v", container)
 	}
 
 	server := NewServer(client, "7778")
