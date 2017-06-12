@@ -203,12 +203,12 @@ func (server *Server) queryBenchmark(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": true,
-			"data":  "Benchmark " + benchmarkName + " do not exist yet",
+			"data":  "Benchmark " + benchmarkName + " does not exist",
 		})
 	} else if deployed.State == "FAILED" {
 		c.JSON(http.StatusAccepted, gin.H{
-			"error": true,
-			"data":  "Failed to deploy benchmark " + benchmarkName + ": " + deployed.Error,
+			"error": false,
+			"data":  "Deployment of benchmark " + benchmarkName + " failed: " + deployed.Error,
 		})
 	} else {
 		c.JSON(http.StatusAccepted, gin.H{
@@ -227,7 +227,7 @@ func (server *Server) deleteBenchmark(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": true,
-			"data":  "Benchmark " + benchmarkName + " do not exist",
+			"data":  "Benchmark " + benchmarkName + " does not exist",
 		})
 		return
 	}
