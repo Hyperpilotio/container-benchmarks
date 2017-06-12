@@ -59,10 +59,6 @@ func (server *Server) removeContainers(benchmarkName string) {
 }
 
 func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
-	hostConfig := &docker.HostConfig{
-		PublishAllPorts: true,
-	}
-
 	benchmark := deployed.Benchmark
 	parts := strings.Split(benchmark.Image, ":")
 	image := parts[0]
@@ -97,13 +93,17 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		config.Cmd = append(config.Cmd, arg)
 	}
 
-	// default CpuPeriod value
+	hostConfig := &docker.HostConfig{
+		PublishAllPorts: true,
+	}
+
+	// default CpuPeriod value for cgroup
 	hostConfig.CPUPeriod = 100000
 	cgroup := &benchmark.CgroupConfig
 	if cgroup != nil && cgroup.SetCpuQuota {
 		// use cgroup cpu quota to control benchmark intensity
 		quota := hostConfig.CPUPeriod * benchmark.Intensity / 100
-		glog.Infof("Setting cpu quota for benchmark to be %d", quota)
+		glog.Infof("Setting cpu quota for benchmark %s to be %d", benchmark.Name, quota)
 		hostConfig.CPUQuota = quota
 	} else {
 		// pass intensity value directly into benchmark command
@@ -145,7 +145,7 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 	}
 
 	deployed.State = "DEPLOYED"
-	glog.Infof("Successfully deployed containers for benchmark %s", benchmark.Name)
+	glog.Infof("Successfully deployed %d containers for benchmark %s", containerCount, benchmark.Name)
 
 	return nil
 }
@@ -205,13 +205,16 @@ func (server *Server) queryBenchmark(c *gin.Context) {
 			"error": true,
 			"data":  "Benchmark " + benchmarkName + " do not exist yet",
 		})
-		return
+	} else if deployed.State == "FAILED" {
+		c.JSON(http.StatusAccepted, gin.H{
+			"error": true,
+			"data":  "Failed to deploy benchmark " + benchmarkName + ": " + deployed.Error,
+		})
 	} else {
 		c.JSON(http.StatusAccepted, gin.H{
 			"error":  false,
 			"status": deployed.State,
 		})
-		return
 	}
 }
 
@@ -223,26 +226,28 @@ func (server *Server) deleteBenchmark(c *gin.Context) {
 	deployed, ok := server.Benchmarks[benchmarkName]
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error": false,
+			"error": true,
+			"data":  "Benchmark " + benchmarkName + " do not exist",
 		})
 		return
 	}
 
 	for i := 1; i <= deployed.Benchmark.Count; i++ {
 		containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
-		glog.Infof("Removing container %s...", containerId)
 		err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
 			ID:            containerId,
 			Force:         true,
 			RemoveVolumes: true,
 		})
 		if err != nil {
+			glog.Errorf("Unable to remove container %s for benchmark %s", containerId, deployed.Benchmark.Name)
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": true,
 				"data":  "Unable to remove container: " + err.Error(),
 			})
 			return
 		}
+		glog.Infof("Removed container %s for benchmark %s", containerId, deployed.Benchmark.Name)
 	}
 
 	delete(server.Benchmarks, deployed.Benchmark.Name)
@@ -250,6 +255,46 @@ func (server *Server) deleteBenchmark(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{
 		"error": false,
 	})
+}
+
+func (server *Server) deleteAllBenchmarks(c *gin.Context) {
+	server.mutex.Lock()
+	defer server.mutex.Unlock()
+
+	glog.Infof("Deleting all deployed benchmarks")
+	for benchmarkName, deployed := range server.Benchmarks {
+		allGone := true
+
+		for i := 1; i <= deployed.Benchmark.Count; i++ {
+			containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
+			err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
+				ID:            containerId,
+				Force:         true,
+				RemoveVolumes: true,
+			})
+			if err != nil {
+				glog.Errorf("Unable to remove container %s: ", containerId, err.Error())
+				allGone = false
+			} else {
+				glog.Infof("Removed container %s for benchmark %s", containerId, deployed.Benchmark.Name)
+			}
+		}
+
+		if allGone {
+			delete(server.Benchmarks, benchmarkName)
+		}
+	}
+
+	if len(server.Benchmarks) > 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": true,
+			"data":  "Unable to remove containers for all benchmarks: ",
+		})
+	} else {
+		c.JSON(http.StatusAccepted, gin.H{
+			"error": false,
+		})
+	}
 }
 
 // currently only support updating cpuquota
@@ -322,6 +367,7 @@ func (server *Server) Run() error {
 		benchmarkGroup.POST("", server.createBenchmark)
 		benchmarkGroup.GET("/:benchmark", server.queryBenchmark)
 		benchmarkGroup.DELETE("/:benchmark", server.deleteBenchmark)
+		benchmarkGroup.DELETE("", server.deleteAllBenchmarks)
 		benchmarkGroup.PUT("/:benchmark/intensity", server.updateIntensity)
 	}
 
