@@ -194,7 +194,17 @@ func (server *Server) createBenchmark(c *gin.Context) {
 
 }
 
-func (server *Server) queryBenchmark(c *gin.Context) {
+func (server *Server) getBenchmarks(c *gin.Context) {
+	server.mutex.Lock()
+	defer server.mutex.Unlock()
+
+	c.JSON(http.StatusOK, gin.H{
+		"error": true,
+		"data":  server.Benchmarks,
+	})
+}
+
+func (server *Server) getBenchmark(c *gin.Context) {
 	benchmarkName := c.Param("benchmark")
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
@@ -365,7 +375,8 @@ func (server *Server) Run() error {
 	benchmarkGroup := router.Group("/benchmarks")
 	{
 		benchmarkGroup.POST("", server.createBenchmark)
-		benchmarkGroup.GET("/:benchmark", server.queryBenchmark)
+		benchmarkGroup.GET("/:benchmark", server.getBenchmark)
+		benchmarkGroup.GET("", server.getBenchmarks)
 		benchmarkGroup.DELETE("/:benchmark", server.deleteBenchmark)
 		benchmarkGroup.DELETE("", server.deleteAllBenchmarks)
 		benchmarkGroup.PUT("/:benchmark/intensity", server.updateIntensity)
