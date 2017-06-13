@@ -95,6 +95,7 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 
 	hostConfig := &docker.HostConfig{
 		PublishAllPorts: true,
+		AutoRemove:      true,
 	}
 
 	// default CpuPeriod value for cgroup
