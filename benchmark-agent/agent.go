@@ -36,26 +36,34 @@ func NewServer(client *docker.Client, port string) *Server {
 	}
 }
 
-func (server *Server) removeContainers(benchmarkName string) {
+func (server *Server) removeContainers(benchmarkName string) int {
 	deployed, ok := server.Benchmarks[benchmarkName]
 	if !ok { // no existing containers belong to the given benchmark
-		return
+		return 0
 	}
 
-	glog.Warningf("Removing deployed containers with prefix %s in name", benchmarkName)
+	deployedContainers := len(deployed.NameToId)
 	for containerName, containerId := range deployed.NameToId {
-		if strings.HasPrefix(containerName, benchmarkName) {
-			err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
-				ID:            containerId,
-				Force:         true,
-				RemoveVolumes: true,
-			})
-			if err != nil {
-				glog.Warningf("Unable to remove container %s", containerName)
-				continue
-			}
+		err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
+			ID:            containerId,
+			Force:         true,
+			RemoveVolumes: true,
+		})
+		if err != nil {
+			glog.Errorf("Unable to remove container %s:%s", containerName, containerId)
+		} else {
+			glog.Info("Removed container %s:%s", containerName, containerId)
+			deployedContainers--
 		}
 	}
+
+	if deployedContainers > 0 {
+		glog.Errorf("Unable to remove all deployed containers for benchmark %s", benchmarkName)
+	} else {
+		glog.Infof("Removed all deployed containers for benchmark %s", benchmarkName)
+	}
+
+	return deployedContainers
 }
 
 func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
@@ -128,9 +136,9 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		})
 
 		if err != nil {
-			glog.Errorf("Unable to create container %d for benchmark %s: %s", i, benchmark.Name, err.Error())
-			// Clean up
-			server.removeContainers(benchmark.Name)
+			glog.Errorf("Unable to create container %s for benchmark %s: %s", containerName, benchmark.Name, err.Error())
+			// Clean up and remove already-deployed containers
+			_ = server.removeContainers(benchmark.Name)
 			return err
 		}
 
@@ -138,9 +146,9 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 
 		err = server.dockerClient.StartContainer(container.ID, hostConfig)
 		if err != nil {
-			glog.Errorf("Unable to start container %d for benchmark %s: %s", i, benchmark.Name, err.Error())
-			// Clean up
-			server.removeContainers(benchmark.Name)
+			glog.Errorf("Unable to start container %s for benchmark %s: %s", containerName, benchmark.Name, err.Error())
+			// Clean up and remove already-deployed containers
+			_ = server.removeContainers(benchmark.Name)
 			return err
 		}
 	}
@@ -243,32 +251,32 @@ func (server *Server) deleteBenchmark(c *gin.Context) {
 		return
 	}
 
-	for i := 1; i <= deployed.Benchmark.Count; i++ {
-		containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
-		err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
-			ID:            containerId,
-			Force:         true,
-			RemoveVolumes: true,
+	if deployed.State == "FAILED" {
+		glog.Warningf("Previous deployment of benchmark %s failed; deleting from server", deployed.Benchmark.Name)
+		delete(server.Benchmarks, deployed.Benchmark.Name)
+		c.JSON(http.StatusAccepted, gin.H{
+			"error": false,
+			"data":  "Failed deployment; deleted from server",
 		})
-		if err != nil {
-			glog.Errorf("Unable to remove container %s for benchmark %s", containerId, deployed.Benchmark.Name)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": true,
-				"data":  "Unable to remove container: " + err.Error(),
-			})
-			return
-		}
-		glog.Infof("Removed container %s for benchmark %s", containerId, deployed.Benchmark.Name)
+		return
+	}
+
+	remainingContainers := server.removeContainers(deployed.Benchmark.Name)
+	if remainingContainers > 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": true,
+			"data":  "Unable to remove all containers for benchmark",
+		})
+	} else {
+		c.JSON(http.StatusAccepted, gin.H{
+			"error": false,
+		})
 	}
 
 	delete(server.Benchmarks, deployed.Benchmark.Name)
-
-	c.JSON(http.StatusAccepted, gin.H{
-		"error": false,
-	})
 }
 
-func (server *Server) deleteAllBenchmarks(c *gin.Context) {
+func (server *Server) deleteBenchmarks(c *gin.Context) {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
 
@@ -379,7 +387,7 @@ func (server *Server) Run() error {
 		benchmarkGroup.GET("/:benchmark", server.getBenchmark)
 		benchmarkGroup.GET("", server.getBenchmarks)
 		benchmarkGroup.DELETE("/:benchmark", server.deleteBenchmark)
-		benchmarkGroup.DELETE("", server.deleteAllBenchmarks)
+		benchmarkGroup.DELETE("", server.deleteBenchmarks)
 		benchmarkGroup.PUT("/:benchmark/intensity", server.updateIntensity)
 	}
 

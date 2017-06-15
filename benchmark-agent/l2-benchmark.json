@@ -1,0 +1,11 @@
+{
+    "name": "l2",
+    "resourceType": "L2CacheCapacity",
+    "image": "hyperpilot/hyperbench",
+    "intensity": 20,
+    "command": {
+	"path": "./l2",
+	"args": ["3600"]
+    },
+    "count": 1
+}

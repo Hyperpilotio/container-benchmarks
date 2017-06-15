@@ -1,0 +1,11 @@
+{
+    "name": "iperf-server",
+    "resourceType": "NetworkBandwidth",
+    "image": "networkstatic/iperf",
+    "intensity": 10,
+    "command": {
+	"path": "iperf",
+	"args": ["-s"]
+    },
+    "count": 1
+}

@@ -1,0 +1,11 @@
+{
+    "name": "l3",
+    "resourceType": "L3CacheCapacity",
+    "image": "hyperpilot/hyperbench",
+    "intensity": 20,
+    "command": {
+	"path": "./l3",
+	"args": ["3600"]
+    },
+    "count": 1
+}
