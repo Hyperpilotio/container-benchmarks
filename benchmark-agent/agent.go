@@ -108,15 +108,23 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 
 	// default CpuPeriod value for cgroup
 	hostConfig.CPUPeriod = 100000
-	cgroup := &benchmark.CgroupConfig
-	if cgroup != nil && cgroup.SetCpuQuota {
+	cgroupConfig := &benchmark.CgroupConfig
+	netConfig := &benchmark.NetConfig
+	if cgroupConfig != nil && cgroupConfig.SetCpuQuota {
 		// use cgroup cpu quota to control benchmark intensity
-		quota := hostConfig.CPUPeriod * benchmark.Intensity / 100
+		quota := hostConfig.CPUPeriod * int64(benchmark.Intensity) / 100
 		glog.Infof("Setting cpu quota for benchmark %s to be %d", benchmark.Name, quota)
 		hostConfig.CPUQuota = quota
+	} else if netConfig != nil && netConfig.SetBwLimit {
+		// set network bandwidth target as benchmark intensity
+		netBw := strconv.Itoa(netConfig.MaxBw * benchmark.Intensity / 100)
+		netBw += "M"
+		glog.Infof("Setting target bandwidth for benchmark %s to be %sbps", benchmark.Name, netBw)
+		config.Cmd = append(config.Cmd, "-b", netBw)
 	} else {
 		// pass intensity value directly into benchmark command
-		config.Cmd = append(config.Cmd, strconv.Itoa(int(benchmark.Intensity)))
+		glog.Infof("Setting resource intensity for benchmark %s to be %d", benchmark.Name, benchmark.Intensity)
+		config.Cmd = append(config.Cmd, strconv.Itoa(benchmark.Intensity))
 	}
 	config.Labels = make(map[string]string)
 	config.Labels["hyperpilot.io/benchmark-agent"] = "true"

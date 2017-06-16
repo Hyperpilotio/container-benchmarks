@@ -1,11 +1,15 @@
 {
-    "name": "iperf-server",
+    "name": "iperf-client",
     "resourceType": "NetworkBandwidth",
     "image": "networkstatic/iperf3",
     "intensity": 10,
+    "netConfig": {
+	"setBwLimit": true,
+	"maxBw": 1000
+    },
     "command": {
 	"path": "iperf3",
-	"args": ["-s"]
+	"args": ["-c", "172.17.0.3", "-t", "3600"]
     },
     "count": 1
 }
