@@ -49,10 +49,11 @@ func (server *Server) removeContainers(benchmarkName string) int {
 			Force:         true,
 			RemoveVolumes: true,
 		})
+
 		if err != nil {
-			glog.Errorf("Unable to remove container %s:%s", containerName, containerId)
+			glog.Errorf("Unable to remove container %s, %s: ", containerName, containerId, err.Error())
 		} else {
-			glog.Info("Removed container %s:%s", containerName, containerId)
+			glog.Info("Removed container %s, %s", containerName, containerId)
 			deployedContainers--
 		}
 	}
@@ -172,7 +173,7 @@ func (server *Server) createBenchmark(c *gin.Context) {
 	if err := c.BindJSON(&benchmark); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": true,
-			"data":  "Error deserializing benchmark: " + string(err.Error()),
+			"data":  "Error deserializing benchmark: " + err.Error(),
 		})
 		return
 	}
