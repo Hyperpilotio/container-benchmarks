@@ -6,9 +6,11 @@
     "cgroupConfig": {
 	"setCpuQuota": true
     },
+    "durationConfig": {
+	"maxDuration": 3600
+    },
     "command": {
-	"path": "./cpu",
-	"args": ["3600"]
+	"path": "./cpu"
     },
     "count": 1
 }

@@ -4,7 +4,7 @@
     "image": "networkstatic/iperf3",
     "intensity": 10,
     "command": {
-	"path": "iperf3",
+	"path": "",
 	"args": ["-s"]
     },
     "count": 1

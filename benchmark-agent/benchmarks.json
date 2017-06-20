@@ -1,28 +1,105 @@
 {
     "benchmarks": [
 	{
-	    "name": "cpu",
-	    "resourceType": "CPUCapacity",
-	    "image": "hyperpilot/hyperbench",
-	    "intensity": 10,
-	    "cgroupConfig": {
-		"setCpuQuota": true
-	    },
-	    "command": {
-		"path": "./cpu",
-	        "args": ["3600"]
-	    },
-	    "count": 1
+            "name": "cpu",
+            "resourceType": "CPUCapacity",
+            "image": "hyperpilot/hyperbench",
+            "intensity": 10,
+            "cgroupConfig": {
+                    "setCpuQuota": true
+            },
+            "durationConfig": {
+                    "maxDuration": 3600
+            },
+            "command": {
+                    "path": "./cpu"
+            },
+            "count": 1
 	},
 	{
-	    "name": "memCap",
-	    "resourceType": "MemoryCapacity",
-	    "image": "hyperpilot/hyperbench",
-	    "intensity": 10,
-	    "command": {
-		"path": "./memCap",
-	        "args": ["3600"]
-	    },
-	    "count": 1
+            "name": "memCap",
+            "resourceType": "MemoryCapacity",
+            "image": "hyperpilot/hyperbench",
+            "intensity": 10,
+            "durationConfig": {
+                    "maxDuration": 3600
+            },
+            "command": {
+                    "path": "./memCap"
+            },
+            "count": 1
+	},
+	{
+            "name": "memBw",
+            "resourceType": "MemorBandwidth",
+            "image": "hyperpilot/hyperbench",
+            "intensity": 10,
+            "durationConfig": {
+                    "maxDuration": 3600
+            },
+            "command": {
+                    "path": "./memBw"
+            },
+            "count": 1
+	},
+	{
+            "name": "l2",
+            "resourceType": "L2CacheCapacity",
+            "image": "hyperpilot/hyperbench",
+            "intensity": 10,
+            "durationConfig": {
+                    "maxDuration": 3600
+            },
+            "command": {
+                    "path": "./l2"
+            },
+            "count": 1
+	},
+	{
+            "name": "l3",
+            "resourceType": "L3CacheCapacity",
+            "image": "hyperpilot/hyperbench",
+            "intensity": 10,
+            "durationConfig": {
+                    "maxDuration": 3600
+            },
+            "command": {
+                    "path": "./l3"
+            },
+            "count": 1
+	},
+	{
+            "name": "iperf-server",
+            "resourceType": "NetworkBandwidth",
+            "image": "networkstatic/iperf3",
+            "intensity": 10,
+            "command": {
+                    "path": "",
+                    "args": ["-s"]
+            },
+            "count": 1
+	},
+	{
+            "name": "iperf-client",
+            "resourceType": "NetworkBandwidth",
+            "image": "networkstatic/iperf3",
+            "intensity": 10,
+            "durationConfig": {
+                    "maxDuration": 3600,
+                    "arg": "-t"
+            },
+            "netConfig": {
+                    "maxBw": 1000,
+                    "arg": "-b"
+            },
+            "hostConfig": {
+                    "targetHost": "localhost",
+                    "arg": "-c"
+            },
+            "command": {
+                    "path": ""
+            },
+            "count": 1
 	}
+    ]
 }

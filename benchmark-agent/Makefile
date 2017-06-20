@@ -20,7 +20,7 @@ push:
 	sudo docker push ${IMAGE}:${TAG}
 
 run:
-	sudo docker run -v /var/run/docker.sock:/var/run/docker.sock -p 7778:7778 -d ${IMAGE}:${TAG}
+	sudo docker run -v /var/run/docker.sock:/var/run/docker.sock -p 7778:7778 -d ${IMAGE}:${TAG} -logtostderr=true -v=1
 
 clean:
 	rm -rf vendor

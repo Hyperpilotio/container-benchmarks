@@ -97,7 +97,9 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		Image: benchmark.Image,
 	}
 
-	config.Cmd = append(config.Cmd, benchmark.Command.Path)
+	if benchmark.Command.Path != "" {
+		config.Cmd = append(config.Cmd, benchmark.Command.Path)
+	}
 	for _, arg := range benchmark.Command.Args {
 		config.Cmd = append(config.Cmd, arg)
 	}
@@ -105,28 +107,54 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 	hostConfig := &docker.HostConfig{
 		PublishAllPorts: true,
 		AutoRemove:      true,
+		NetworkMode:     "host",
 	}
 
-	// default CpuPeriod value for cgroup
-	hostConfig.CPUPeriod = 100000
-	cgroupConfig := &benchmark.CgroupConfig
-	netConfig := &benchmark.NetConfig
+	cgroupConfig := benchmark.CgroupConfig
+	netConfig := benchmark.NetConfig
+	durationConfig := benchmark.DurationConfig
+	targetHostConfig := benchmark.HostConfig
+
+	if durationConfig != nil {
+		// set max time duration for the benchmark run
+		maxDuration := strconv.Itoa(durationConfig.MaxDuration)
+		glog.Infof("Setting max run duration for benchmark %s to be %s seconds", benchmark.Name, maxDuration)
+		if durationConfig.Arg != "" {
+			config.Cmd = append(config.Cmd, durationConfig.Arg)
+		}
+		config.Cmd = append(config.Cmd, maxDuration)
+	}
+
 	if cgroupConfig != nil && cgroupConfig.SetCpuQuota {
 		// use cgroup cpu quota to control benchmark intensity
+		hostConfig.CPUPeriod = 100000
 		quota := hostConfig.CPUPeriod * int64(benchmark.Intensity) / 100
 		glog.Infof("Setting cpu quota for benchmark %s to be %d", benchmark.Name, quota)
 		hostConfig.CPUQuota = quota
-	} else if netConfig != nil && netConfig.SetBwLimit {
+	} else if netConfig != nil {
 		// set network bandwidth target as benchmark intensity
 		netBw := strconv.Itoa(netConfig.MaxBw * benchmark.Intensity / 100)
 		netBw += "M"
 		glog.Infof("Setting target bandwidth for benchmark %s to be %sbps", benchmark.Name, netBw)
-		config.Cmd = append(config.Cmd, "-b", netBw)
+		if netConfig.Arg != "" {
+			config.Cmd = append(config.Cmd, netConfig.Arg)
+		}
+		config.Cmd = append(config.Cmd, netBw)
 	} else {
 		// pass intensity value directly into benchmark command
 		glog.Infof("Setting resource intensity for benchmark %s to be %d", benchmark.Name, benchmark.Intensity)
 		config.Cmd = append(config.Cmd, strconv.Itoa(benchmark.Intensity))
 	}
+
+	if targetHostConfig != nil {
+		// set target host name or ip for the benchmark run
+		glog.Infof("Setting target host for benchmark %s to be %s", benchmark.Name, targetHostConfig.TargetHost)
+		if targetHostConfig.Arg != "" {
+			config.Cmd = append(config.Cmd, targetHostConfig.Arg)
+		}
+		config.Cmd = append(config.Cmd, targetHostConfig.TargetHost)
+	}
+
 	config.Labels = make(map[string]string)
 	config.Labels["hyperpilot.io/benchmark-agent"] = "true"
 
@@ -217,7 +245,7 @@ func (server *Server) getBenchmarks(c *gin.Context) {
 	defer server.mutex.Unlock()
 
 	c.JSON(http.StatusOK, gin.H{
-		"error": true,
+		"error": false,
 		"data":  server.Benchmarks,
 	})
 }
@@ -239,7 +267,7 @@ func (server *Server) getBenchmark(c *gin.Context) {
 			"data":  "Deployment of benchmark " + benchmarkName + " failed: " + deployed.Error,
 		})
 	} else {
-		c.JSON(http.StatusAccepted, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"error":  false,
 			"status": deployed.State,
 		})

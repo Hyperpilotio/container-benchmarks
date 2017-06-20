@@ -3,9 +3,11 @@
     "resourceType": "MemoryBandwidth",
     "image": "hyperpilot/hyperbench",
     "intensity": 10,
+    "durationConfig": {
+        "maxDuration": 3600
+    },
     "command": {
-	"path": "./memBw",
-	"args": ["3600"]
+	"path": "./memBw"
     },
     "count": 1
 }

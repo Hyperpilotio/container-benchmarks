@@ -1,30 +1,42 @@
 package apis
 
 type CgroupConfig struct {
-	SetCpuQuota bool `json:"setCpuQuota"`
+	SetCpuQuota bool `bson:"setCpuQuota" json:"setCpuQuota"`
+}
+
+type DurationConfig struct {
+	MaxDuration int    `bson:"maxDuration" json:"maxDuration" binding:"required`
+	Arg         string `bson:"arg" json:"arg"`
+}
+
+type HostConfig struct {
+	TargetHost string `bson:"targetHost" json::"targetHost"`
+	Arg        string `bson:"arg" json:"arg"`
 }
 
 type NetConfig struct {
-	SetBwLimit bool `json:"setBwLimit"`
-	MaxBw      int  `json::"maxBw"`
+	MaxBw int    `bson:"maxBw" json::"maxBw"`
+	Arg   string `bson:"arg" json:"arg"`
 }
 
 type Command struct {
-	Path string   `json:"path" binding:"required"`
-	Args []string `json:"args"`
+	Path string   `bson:"path" json:"path"`
+	Args []string `bson:"args" json:"args"`
 }
 
 type Benchmark struct {
-	Name         string       `json:"name" binding:"required"`
-	ResourceType string       `json:"resourceType" binding:"required"`
-	Image        string       `json:"image" binding:"required"`
-	Command      Command      `json:"command" binding:"required"`
-	Intensity    int          `json::"intensity" binding:"required"`
-	CgroupConfig CgroupConfig `json:"cgroupConfig"`
-	NetConfig    NetConfig    `json:"netConfig"`
-	Count        int          `json:"count"`
+	Name           string          `bson:"name" json:"name" binding:"required"`
+	ResourceType   string          `bson:"resourceType" json:"resourceType" binding:"required"`
+	Image          string          `bson:"image" json:"image" binding:"required"`
+	Command        Command         `bson:"command" json:"command" binding:"required"`
+	Intensity      int             `bson:"intensity" json::"intensity" binding:"required"`
+	DurationConfig *DurationConfig `bson:"durationConfig" json:"durationConfig" binding:"required`
+	CgroupConfig   *CgroupConfig   `bson:"cgroupConfig" json:"cgroupConfig"`
+	HostConfig     *HostConfig     `bson:"hostConfig" json:"hostConfig"`
+	NetConfig      *NetConfig      `bson:"netConfig" json:"netConfig"`
+	Count          int             `bson:"count" json:"count"`
 }
 
 type UpdateRequest struct {
-	Intensity int64 `json::"intensity" binding:"required"`
+	Intensity int64 `bson:"intensity" json::"intensity" binding:"required"`
 }

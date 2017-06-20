@@ -2,14 +2,21 @@
     "name": "iperf-client",
     "resourceType": "NetworkBandwidth",
     "image": "networkstatic/iperf3",
-    "intensity": 10,
+    "intensity": 20,
+    "durationConfig": {
+	"maxDuration": 60,
+	"arg": "-t"
+    },
     "netConfig": {
-	"setBwLimit": true,
-	"maxBw": 1000
+	"maxBw": 1000,
+	"arg": "-b"
+    },
+    "hostConfig": {
+	"targetHost": "localhost",
+	"arg": "-c"
     },
     "command": {
-	"path": "iperf3",
-	"args": ["-c", "172.17.0.3", "-t", "3600"]
+	"path": ""
     },
     "count": 1
 }

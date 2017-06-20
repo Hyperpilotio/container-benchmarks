@@ -2,10 +2,12 @@
     "name": "memCap",
     "resourceType": "MemoryCapacity",
     "image": "hyperpilot/hyperbench",
-    "intensity": 20,
+    "intensity": 10,
+    "durationConfig": {
+        "maxDuration": 3600
+    },
     "command": {
-	"path": "./memCap",
-	"args": ["3600"]
+	"path": "./memCap"
     },
     "count": 1
 }

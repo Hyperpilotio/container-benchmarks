@@ -3,9 +3,11 @@
     "resourceType": "L2CacheCapacity",
     "image": "hyperpilot/hyperbench",
     "intensity": 20,
+    "durationConfig": {
+    	"maxDuration": 3600
+    },
     "command": {
-	"path": "./l2",
-	"args": ["3600"]
+	"path": "./l2"
     },
     "count": 1
 }
