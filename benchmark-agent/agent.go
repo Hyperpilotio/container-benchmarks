@@ -1,20 +1,25 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"net/http"
+	"os"
 	"strconv"
-	"strings"
 	"sync"
 
-	"github.com/fsouza/go-dockerclient"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/glog"
 	"github.com/hyperpilotio/container-benchmarks/benchmark-agent/apis"
 )
 
 type Server struct {
-	dockerClient *docker.Client
+	dockerClient *client.Client
 	Port         string
 	mutex        *sync.Mutex
 	Benchmarks   map[string]*DeployedBenchmark
@@ -27,7 +32,7 @@ type DeployedBenchmark struct {
 	Error     string
 }
 
-func NewServer(client *docker.Client, port string) *Server {
+func NewServer(client *client.Client, port string) *Server {
 	return &Server{
 		dockerClient: client,
 		Port:         port,
@@ -44,8 +49,7 @@ func (server *Server) removeContainers(benchmarkName string) int {
 
 	deployedContainers := len(deployed.NameToId)
 	for containerName, containerId := range deployed.NameToId {
-		err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
-			ID:            containerId,
+		err := server.dockerClient.ContainerRemove(context.Background(), containerId, types.ContainerRemoveOptions{
 			Force:         true,
 			RemoveVolumes: true,
 		})
@@ -69,31 +73,14 @@ func (server *Server) removeContainers(benchmarkName string) int {
 
 func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 	benchmark := deployed.Benchmark
-	parts := strings.Split(benchmark.Image, ":")
-	image := parts[0]
-	tag := "latest"
-	if len(parts) > 1 {
-		tag = parts[1]
-	}
-
-	glog.Infof("Pulling image %s:%s for benchmark %s", image, tag, benchmark.Name)
-	authConfigs, err := docker.NewAuthConfigurationsFromDockerCfg()
+	glog.Infof("Pulling image %s for benchmark %s", benchmark.Image, benchmark.Name)
+	_, err := server.dockerClient.ImagePull(context.Background(), benchmark.Image, types.ImagePullOptions{})
 	if err != nil {
-		glog.Errorf("Unable to get docker authorization configurations: " + err.Error())
+		glog.Errorf("Unable to pull image %s for benchmark %s: %s", benchmark.Image, benchmark.Name, err.Error())
 		return err
 	}
 
-	authConfig := authConfigs.Configs["auths"]
-	err = server.dockerClient.PullImage(docker.PullImageOptions{
-		Repository: image,
-		Tag:        tag,
-	}, authConfig)
-	if err != nil {
-		glog.Errorf("Unable to pull image %s:%s for benchmark %s: %s", image, tag, benchmark.Name, err.Error())
-		return err
-	}
-
-	config := &docker.Config{
+	config := &container.Config{
 		Image: benchmark.Image,
 	}
 
@@ -104,7 +91,7 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		config.Cmd = append(config.Cmd, arg)
 	}
 
-	hostConfig := &docker.HostConfig{
+	hostConfig := &container.HostConfig{
 		PublishAllPorts: true,
 		AutoRemove:      true,
 		NetworkMode:     "host",
@@ -166,12 +153,7 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 	deployed.State = "DEPLOYING"
 	for i := 1; i <= containerCount; i++ {
 		containerName := benchmark.Name + strconv.Itoa(i)
-		container, err := server.dockerClient.CreateContainer(docker.CreateContainerOptions{
-			Name:       containerName,
-			Config:     config,
-			HostConfig: hostConfig,
-		})
-
+		container, err := server.dockerClient.ContainerCreate(context.Background(), config, hostConfig, &network.NetworkingConfig{}, containerName)
 		if err != nil {
 			glog.Errorf("Unable to create container %s for benchmark %s: %s", containerName, benchmark.Name, err.Error())
 			// Clean up and remove already-deployed containers
@@ -181,7 +163,7 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 
 		deployed.NameToId[containerName] = container.ID
 
-		err = server.dockerClient.StartContainer(container.ID, hostConfig)
+		err = server.dockerClient.ContainerStart(context.Background(), container.ID, types.ContainerStartOptions{})
 		if err != nil {
 			glog.Errorf("Unable to start container %s for benchmark %s: %s", containerName, benchmark.Name, err.Error())
 			// Clean up and remove already-deployed containers
@@ -323,8 +305,7 @@ func (server *Server) deleteBenchmarks(c *gin.Context) {
 
 		for i := 1; i <= deployed.Benchmark.Count; i++ {
 			containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
-			err := server.dockerClient.RemoveContainer(docker.RemoveContainerOptions{
-				ID:            containerId,
+			err := server.dockerClient.ContainerRemove(context.Background(), containerId, types.ContainerRemoveOptions{
 				Force:         true,
 				RemoveVolumes: true,
 			})
@@ -385,23 +366,27 @@ func (server *Server) updateIntensity(c *gin.Context) {
 		return
 	}
 
-	updateOptions := docker.UpdateContainerOptions{}
+	updateOptions := container.UpdateConfig{}
 	if update.Intensity > 0 {
 		updateOptions.CPUPeriod = 100000
-		updateOptions.CPUQuota = updateOptions.CPUPeriod * int(update.Intensity) / 100
+		updateOptions.CPUQuota = updateOptions.CPUPeriod * update.Intensity / 100
 	}
 
 	glog.Infof("Updating resource intensity for benchmark %s to %d", benchmarkName, update.Intensity)
 	for i := 1; i <= deployed.Benchmark.Count; i++ {
 		containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
 		glog.Infof("Updating container ID %s, %+v", containerId, updateOptions)
-		err := server.dockerClient.UpdateContainer(containerId, updateOptions)
+		body, err := server.dockerClient.ContainerUpdate(context.Background(), containerId, updateOptions)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": true,
 				"data":  "Unable to update resource intensity: " + err.Error(),
 			})
 			return
+		}
+
+		if len(body.Warnings) > 0 {
+			glog.Warningf("Receievd warnings after updating container: %s", body.Warnings)
 		}
 	}
 
@@ -435,29 +420,29 @@ func main() {
 	// Calling this to avoid error message "Logging before calling flags.parse"
 	flag.CommandLine.Parse([]string{})
 
-	endpoint := "unix:///var/run/docker.sock"
-	client, err := docker.NewClient(endpoint)
+	os.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	newClient, err := client.NewEnvClient()
 	if err != nil {
 		panic(err)
 	}
 
-	err = client.Ping()
+	// Test Docker daemon connection before starting agent
+	_, err = newClient.Ping(context.Background())
 	if err != nil {
 		glog.Error("Unable to ping docker daemon")
 		panic(err)
 	}
 
-	filters := make(map[string][]string)
-	filters["label"] = []string{"hyperpilot.io/benchmark-agent"}
-	existingContainers, err := client.ListContainers(docker.ListContainersOptions{Filters: filters, All: true})
+	filters := filters.NewArgs()
+	filters.Add("label", "hyperpilot.io/benchmark-agent")
+	existingContainers, err := newClient.ContainerList(context.Background(), types.ContainerListOptions{Filters: filters, All: true})
 	if err != nil {
 		glog.Error("Unable to find existing launched benchmarks")
 		panic(err)
 	}
 
 	for _, container := range existingContainers {
-		err := client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:            container.ID,
+		err = newClient.ContainerRemove(context.Background(), container.ID, types.ContainerRemoveOptions{
 			Force:         true,
 			RemoveVolumes: true,
 		})
@@ -468,7 +453,7 @@ func main() {
 		glog.Infof("Removed existing launched benchmark container: %v", container)
 	}
 
-	server := NewServer(client, "7778")
+	server := NewServer(newClient, "7778")
 	err = server.Run()
 	if err != nil {
 		panic(err)
