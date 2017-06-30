@@ -1,0 +1,26 @@
+hash: 63f66985453fc7f704b0a39d3ee6300d593648d06ad09d9ee3cb623199f4f318
+updated: 2017-06-07T22:04:58.026777623-07:00
+imports:
+- name: github.com/fsouza/go-dockerclient
+  version: 3d5f15e236078a9e942e551681d577cf67f42531
+  subpackages:
+  - external/github.com/Sirupsen/logrus
+  - external/github.com/docker/docker/opts
+  - external/github.com/docker/docker/pkg/archive
+  - external/github.com/docker/docker/pkg/fileutils
+  - external/github.com/docker/docker/pkg/homedir
+  - external/github.com/docker/docker/pkg/ioutils
+  - external/github.com/docker/docker/pkg/parsers
+  - external/github.com/docker/docker/pkg/pools
+  - external/github.com/docker/docker/pkg/promise
+  - external/github.com/docker/docker/pkg/stdcopy
+  - external/github.com/docker/docker/pkg/system
+  - external/github.com/docker/docker/pkg/ulimit
+  - external/github.com/docker/docker/pkg/units
+  - external/github.com/docker/docker/volume
+  - external/github.com/opencontainers/runc/libcontainer/user
+- name: github.com/gin-gonic/gin
+  version: e2212d40c62a98b388a5eb48ecbdcf88534688ba
+- name: github.com/golang/glog
+  version: 23def4e6c14b4da8ac2ed8007337bc5eb5007998
+testImports: []
