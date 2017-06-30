@@ -449,7 +449,7 @@ func main() {
 
 	filters := make(map[string][]string)
 	filters["label"] = []string{"hyperpilot.io/benchmark-agent"}
-	existingContainers, err := client.ListContainers(docker.ListContainersOptions{Filters: filters})
+	existingContainers, err := client.ListContainers(docker.ListContainersOptions{Filters: filters, All: true})
 	if err != nil {
 		glog.Error("Unable to find existing launched benchmarks")
 		panic(err)
