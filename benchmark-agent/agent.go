@@ -435,8 +435,7 @@ func main() {
 	// Calling this to avoid error message "Logging before calling flags.parse"
 	flag.CommandLine.Parse([]string{})
 
-	endpoint := "unix:///var/run/docker.sock"
-	client, err := docker.NewClient(endpoint)
+	client, err := docker.NewClientFromEnv()
 	if err != nil {
 		panic(err)
 	}
