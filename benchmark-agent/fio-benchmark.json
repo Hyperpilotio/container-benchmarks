@@ -1,0 +1,19 @@
+{
+    "name": "fio",
+    "resourceType": "DiskIO",
+    "image": "hyperpilot/fiobench",
+    "intensity": 100,
+    "durationConfig": {
+	"maxDuration": 3600,
+	"arg": "--runtime"
+    },
+    "ioConfig": {
+	"maxIO": 256,
+	"arg": "--iodepth"
+    },
+    "command": {
+	"path": "fio",
+	"args": ["job.fio", "--size", "1g"]
+    },
+    "count": 1
+}

@@ -19,6 +19,11 @@ type NetConfig struct {
 	Arg   string `bson:"arg" json:"arg"`
 }
 
+type IOConfig struct {
+	MaxIO int    `bson:"maxIO" json::"maxIO"`
+	Arg   string `bson:"arg" json:"arg"`
+}
+
 type Command struct {
 	Path string   `bson:"path" json:"path"`
 	Args []string `bson:"args" json:"args"`
@@ -34,6 +39,7 @@ type Benchmark struct {
 	CgroupConfig   *CgroupConfig   `bson:"cgroupConfig" json:"cgroupConfig"`
 	HostConfig     *HostConfig     `bson:"hostConfig" json:"hostConfig"`
 	NetConfig      *NetConfig      `bson:"netConfig" json:"netConfig"`
+	IOConfig       *IOConfig       `bson:"ioConfig" json:"ioConfig"`
 	Count          int             `bson:"count" json:"count"`
 }
 

@@ -53,7 +53,7 @@ func (server *Server) removeContainers(benchmarkName string) int {
 		if err != nil {
 			glog.Errorf("Unable to remove container %s, %s: ", containerName, containerId, err.Error())
 		} else {
-			glog.Info("Removed container %s, %s", containerName, containerId)
+			glog.V(1).Info("Removed container %s, %s", containerName, containerId)
 			deployedContainers--
 		}
 	}
@@ -61,7 +61,7 @@ func (server *Server) removeContainers(benchmarkName string) int {
 	if deployedContainers > 0 {
 		glog.Errorf("Unable to remove all deployed containers for benchmark %s", benchmarkName)
 	} else {
-		glog.Infof("Removed all deployed containers for benchmark %s", benchmarkName)
+		glog.V(1).Infof("Removed all deployed containers for benchmark %s", benchmarkName)
 	}
 
 	return deployedContainers
@@ -76,7 +76,7 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		tag = parts[1]
 	}
 
-	glog.Infof("Pulling image %s:%s for benchmark %s", image, tag, benchmark.Name)
+	glog.V(1).Infof("Pulling image %s:%s for benchmark %s", image, tag, benchmark.Name)
 	authConfigs, err := docker.NewAuthConfigurationsFromDockerCfg()
 	if err != nil {
 		glog.Errorf("Unable to get docker authorization configurations: " + err.Error())
@@ -106,19 +106,20 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 
 	hostConfig := &docker.HostConfig{
 		PublishAllPorts: true,
-		AutoRemove:      true,
+		AutoRemove:      false,
 		NetworkMode:     "host",
 	}
 
 	cgroupConfig := benchmark.CgroupConfig
 	netConfig := benchmark.NetConfig
+	ioConfig := benchmark.IOConfig
 	durationConfig := benchmark.DurationConfig
 	targetHostConfig := benchmark.HostConfig
 
 	if durationConfig != nil {
 		// set max time duration for the benchmark run
 		maxDuration := strconv.Itoa(durationConfig.MaxDuration)
-		glog.Infof("Setting max run duration for benchmark %s to be %s seconds", benchmark.Name, maxDuration)
+		glog.V(1).Infof("Setting max run duration for benchmark %s to be %s seconds", benchmark.Name, maxDuration)
 		if durationConfig.Arg != "" {
 			config.Cmd = append(config.Cmd, durationConfig.Arg)
 		}
@@ -129,26 +130,34 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		// use cgroup cpu quota to control benchmark intensity
 		hostConfig.CPUPeriod = 100000
 		quota := hostConfig.CPUPeriod * int64(benchmark.Intensity) / 100
-		glog.Infof("Setting cpu quota for benchmark %s to be %d", benchmark.Name, quota)
+		glog.V(1).Infof("Setting cpu quota for benchmark %s to be %d", benchmark.Name, quota)
 		hostConfig.CPUQuota = quota
 	} else if netConfig != nil {
 		// set network bandwidth target as benchmark intensity
 		netBw := strconv.Itoa(netConfig.MaxBw * benchmark.Intensity / 100)
 		netBw += "M"
-		glog.Infof("Setting target bandwidth for benchmark %s to be %sbps", benchmark.Name, netBw)
+		glog.V(1).Infof("Setting target bandwidth for benchmark %s to be %sbps", benchmark.Name, netBw)
 		if netConfig.Arg != "" {
 			config.Cmd = append(config.Cmd, netConfig.Arg)
 		}
 		config.Cmd = append(config.Cmd, netBw)
+	} else if ioConfig != nil {
+		// set storage io load intensity using benchmark intensity
+		ioIntensity := strconv.Itoa(ioConfig.MaxIO * benchmark.Intensity / 100)
+		glog.V(1).Infof("Setting io load intensity for benchmark %s to be %s", benchmark.Name, ioIntensity)
+		if ioConfig.Arg != "" {
+			config.Cmd = append(config.Cmd, ioConfig.Arg)
+		}
+		config.Cmd = append(config.Cmd, ioIntensity)
 	} else {
 		// pass intensity value directly into benchmark command
-		glog.Infof("Setting resource intensity for benchmark %s to be %d", benchmark.Name, benchmark.Intensity)
+		glog.V(1).Infof("Setting resource intensity for benchmark %s to be %d", benchmark.Name, benchmark.Intensity)
 		config.Cmd = append(config.Cmd, strconv.Itoa(benchmark.Intensity))
 	}
 
 	if targetHostConfig != nil {
 		// set target host name or ip for the benchmark run
-		glog.Infof("Setting target host for benchmark %s to be %s", benchmark.Name, targetHostConfig.TargetHost)
+		glog.V(1).Infof("Setting target host for benchmark %s to be %s", benchmark.Name, targetHostConfig.TargetHost)
 		if targetHostConfig.Arg != "" {
 			config.Cmd = append(config.Cmd, targetHostConfig.Arg)
 		}
@@ -178,6 +187,7 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 			_ = server.removeContainers(benchmark.Name)
 			return err
 		}
+		glog.V(1).Infof("Created container %s (%s)", container.Name, container.ID)
 
 		deployed.NameToId[containerName] = container.ID
 
@@ -185,13 +195,14 @@ func (server *Server) deployBenchmark(deployed *DeployedBenchmark) error {
 		if err != nil {
 			glog.Errorf("Unable to start container %s for benchmark %s: %s", containerName, benchmark.Name, err.Error())
 			// Clean up and remove already-deployed containers
-			_ = server.removeContainers(benchmark.Name)
+			//_ = server.removeContainers(benchmark.Name)
 			return err
 		}
+		glog.V(1).Infof("Started container %s (%s)", container.Name, container.ID)
 	}
 
 	deployed.State = "DEPLOYED"
-	glog.Infof("Successfully deployed %d containers for benchmark %s", containerCount, benchmark.Name)
+	glog.V(1).Infof("Successfully deployed %d containers for benchmark %s", containerCount, benchmark.Name)
 
 	return nil
 }
@@ -222,7 +233,7 @@ func (server *Server) createBenchmark(c *gin.Context) {
 		State:     "CREATING",
 	}
 
-	glog.Infof("Creating new benchmark: %+v", benchmark)
+	glog.V(1).Infof("Creating new benchmark: %+v", benchmark)
 	server.Benchmarks[benchmark.Name] = deployed
 
 	go func() {
@@ -317,7 +328,7 @@ func (server *Server) deleteBenchmarks(c *gin.Context) {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
 
-	glog.Infof("Deleting all deployed benchmarks")
+	glog.V(1).Infof("Deleting all deployed benchmarks")
 	for benchmarkName, deployed := range server.Benchmarks {
 		allGone := true
 
@@ -332,7 +343,7 @@ func (server *Server) deleteBenchmarks(c *gin.Context) {
 				glog.Errorf("Unable to remove container %s: ", containerId, err.Error())
 				allGone = false
 			} else {
-				glog.Infof("Removed container %s for benchmark %s", containerId, deployed.Benchmark.Name)
+				glog.V(1).Infof("Removed container %s for benchmark %s", containerId, deployed.Benchmark.Name)
 			}
 		}
 
@@ -391,10 +402,10 @@ func (server *Server) updateIntensity(c *gin.Context) {
 		updateOptions.CPUQuota = updateOptions.CPUPeriod * int(update.Intensity) / 100
 	}
 
-	glog.Infof("Updating resource intensity for benchmark %s to %d", benchmarkName, update.Intensity)
+	glog.V(1).Infof("Updating resource intensity for benchmark %s to %d", benchmarkName, update.Intensity)
 	for i := 1; i <= deployed.Benchmark.Count; i++ {
 		containerId := deployed.NameToId[deployed.Benchmark.Name+strconv.Itoa(i)]
-		glog.Infof("Updating container ID %s, %+v", containerId, updateOptions)
+		glog.V(1).Infof("Updating container ID %s, %+v", containerId, updateOptions)
 		err := server.dockerClient.UpdateContainer(containerId, updateOptions)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -464,7 +475,7 @@ func main() {
 			glog.Errorf("Unable to remove existing container: %v", container)
 			panic(err)
 		}
-		glog.Infof("Removed existing launched benchmark container: %v", container)
+		glog.V(1).Infof("Removed existing launched benchmark container: %v", container)
 	}
 
 	server := NewServer(client, "7778")
